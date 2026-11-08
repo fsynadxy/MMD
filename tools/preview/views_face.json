@@ -1,0 +1,8 @@
+{"width":520,"height":560,"views":[
+ {"name":"face_normal","eye":[0,17.8,-11],"target":[0,17.75,0],"fov":17},
+ {"name":"face_smile","eye":[0,17.8,-11],"target":[0,17.75,0],"fov":17,"morphs":{"微笑み":1}},
+ {"name":"face_shy","eye":[0,17.8,-11],"target":[0,17.75,0],"fov":17,"morphs":{"恥ずかしい":1},"matOpacity":{"頬":1.0}},
+ {"name":"face_angry","eye":[0,17.8,-11],"target":[0,17.75,0],"fov":17,"morphs":{"怒る":1}},
+ {"name":"face_sleepy","eye":[0,17.8,-11],"target":[0,17.75,0],"fov":17,"morphs":{"眠い":1}},
+ {"name":"face_surprised","eye":[0,17.8,-11],"target":[0,17.75,0],"fov":17,"morphs":{"驚き":1}}
+]}

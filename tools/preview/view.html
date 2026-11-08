@@ -1,0 +1,136 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>PMX preview</title>
+<style>html,body{margin:0;background:#f4f2f0;overflow:hidden}canvas{display:block}</style>
+<script>
+  const q = new URLSearchParams(location.search);
+  const threeBase = q.get('three') || 'https://cdn.jsdelivr.net/npm/three@0.160.0/';
+  document.write('<script type="importmap">' + JSON.stringify({imports: {
+    'three': threeBase + 'build/three.module.js',
+    'three/addons/': threeBase + 'examples/jsm/'}}) + '<\/script>');
+</script>
+</head><body>
+<script type="module">
+import * as THREE from 'three';
+import { MMDLoader } from 'three/addons/loaders/MMDLoader.js';
+import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
+import { MMDAnimationHelper } from 'three/addons/animation/MMDAnimationHelper.js';
+
+const q = new URLSearchParams(location.search);
+const W = +(q.get('w') || 900), H = +(q.get('h') || 1200);
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1);
+renderer.setSize(W, H);
+renderer.setClearColor(0xf4f2f0);
+document.body.appendChild(renderer.domElement);
+const effect = new OutlineEffect(renderer);
+const scene = new THREE.Scene();
+const amb = new THREE.AmbientLight(0xffffff, +(q.get('amb') || 2.0));
+scene.add(amb);
+const dl = new THREE.DirectionalLight(0xffffff, +(q.get('dir') || 3.0));
+dl.position.set(-1, 1, 1).normalize();
+scene.add(dl);
+const camera = new THREE.PerspectiveCamera(30, W / H, 0.1, 2000);
+
+window.state = { ready: false, error: null };
+window.addEventListener('error', e => { window.state.error = String(e.message); });
+
+const loader = new MMDLoader();
+let mesh = null, helper = null;
+loader.load(q.get('model'), m => {
+  mesh = m;
+  scene.add(mesh);
+  window.mesh = mesh;
+  window.state.ready = true;
+  window.state.info = {
+    vertices: mesh.geometry.attributes.position.count,
+    bones: mesh.skeleton.bones.length,
+    morphs: Object.keys(mesh.morphTargetDictionary || {}).length,
+    materials: mesh.material.length,
+  };
+}, undefined, e => { window.state.error = 'load: ' + e; });
+
+function boneByName(n) { return mesh.skeleton.bones.find(b => b.name === n); }
+
+// view = {eye:[x,y,z], target:[x,y,z], fov, morphs:{name:w}, rot:{bone:[x,y,z] (deg, MMD space)}}
+window.renderView = (view) => {
+  for (const k in mesh.morphTargetDictionary) mesh.morphTargetInfluences[mesh.morphTargetDictionary[k]] = 0;
+  for (const [k, v] of Object.entries(view.morphs || {})) {
+    const i = mesh.morphTargetDictionary[k];
+    if (i === undefined) throw new Error('no morph ' + k);
+    mesh.morphTargetInfluences[i] = v;
+  }
+  mesh.pose();
+  // three.js' MMDLoader ignores material morphs; emulate opacity changes for previews
+  for (const m of mesh.material) { if (m.userData.baseOpacity === undefined) m.userData.baseOpacity = m.opacity; m.opacity = m.userData.baseOpacity; m.transparent = m.transparent || m.opacity < 1; }
+  for (const [k, v] of Object.entries(view.matOpacity || {})) {
+    const m = mesh.material.find(mm => mm.name === k);
+    if (!m) throw new Error('no material ' + k);
+    m.opacity = v; m.transparent = true; m.needsUpdate = true;
+  }
+  for (const [k, v] of Object.entries(view.rot || {})) {
+    const b = boneByName(k);
+    if (!b) throw new Error('no bone ' + k);
+    // MMD (left-handed) euler -> three (right-handed): negate x and y
+    const e = new THREE.Euler(-v[0] * Math.PI / 180, -v[1] * Math.PI / 180, v[2] * Math.PI / 180, 'YXZ');
+    b.quaternion.multiply(new THREE.Quaternion().setFromEuler(e));
+  }
+  for (const [k, v] of Object.entries(view.pos || {})) {
+    const b = boneByName(k);
+    if (!b) throw new Error('no bone ' + k);
+    b.position.add(new THREE.Vector3(v[0], v[1], -v[2]));
+  }
+  if (view.solve) {
+    if (!helper) { helper = new MMDAnimationHelper({ afterglow: 0 }); helper.add(mesh, { physics: false }); }
+    const objs = helper.objects.get(mesh);
+    mesh.updateMatrixWorld(true);
+    objs.ikSolver && objs.ikSolver.update();
+    objs.grantSolver && objs.grantSolver.update();
+  }
+  mesh.updateMatrixWorld(true);
+  const [ex, ey, ez] = view.eye, [tx, ty, tz] = view.target;
+  camera.fov = view.fov || 30; camera.aspect = W / H; camera.updateProjectionMatrix();
+  // MMD z -> three -z
+  camera.position.set(ex, ey, -ez);
+  camera.lookAt(tx, ty, -tz);
+  effect.render(scene, camera);
+  return true;
+};
+
+// physics test: runs the helper with ammo for `seconds`, returns max bone drift info
+window.runPhysics = async (seconds, rot) => {
+  if (!window.AmmoReady) {
+    const base = q.get('three') + 'examples/jsm/libs/';
+    await new Promise((res, rej) => { const sc = document.createElement('script'); sc.src = base + 'ammo.wasm.js'; sc.onload = res; sc.onerror = rej; document.head.appendChild(sc); });
+    const lib = await window.Ammo({ locateFile: p => base + p });
+    window.Ammo = lib;
+    window.AmmoReady = true;
+  }
+  const h = new MMDAnimationHelper({ afterglow: 2.0 });
+  mesh.pose();
+  h.add(mesh, { physics: true });
+  const dt = 1 / 60;
+  let t = 0;
+  while (t < seconds) {
+    if (rot) {
+      const phase = Math.sin(t * 3.0);
+      for (const [k, v] of Object.entries(rot)) {
+        const b = boneByName(k);
+        b.rotation.set(-v[0] * phase * Math.PI / 180, -v[1] * phase * Math.PI / 180, v[2] * phase * Math.PI / 180);
+      }
+    }
+    h.update(dt);
+    t += dt;
+  }
+  window.physicsHelper = h;
+  let nan = 0;
+  for (const b of mesh.skeleton.bones) { const p = b.getWorldPosition(new THREE.Vector3()); if (!isFinite(p.x + p.y + p.z)) nan++; }
+  return { nan };
+};
+window.renderCurrent = (view) => {
+  const [ex, ey, ez] = view.eye, [tx, ty, tz] = view.target;
+  camera.fov = view.fov || 30; camera.aspect = W / H; camera.updateProjectionMatrix();
+  camera.position.set(ex, ey, -ez); camera.lookAt(tx, ty, -tz);
+  effect.render(scene, camera);
+};
+</script>
+</body></html>
