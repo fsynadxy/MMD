@@ -10,11 +10,13 @@ from .builder import w_chain, w_single
 from .geom import catmull_rom, merge_parts, normalize
 from .physics import G_ACC, Physics
 
-FLOWER_C = np.array([1.02, 18.95, -0.30])
-FLOWER_N = normalize(np.array([0.80, 0.25, -0.55]))
-RIBBON_KNOT = np.array([1.12, 18.55, -0.02])
-RIBBON_BONE_Y = (18.35, 17.75, 17.15)
-RIBBON_TAIL_Y = 16.55
+from .hair import over_head  # noqa: E402
+
+FLOWER_C = over_head(68, (30,), (0.30,))[0]
+FLOWER_N = normalize(np.array([0.78, 0.30, -0.55]))
+RIBBON_KNOT = over_head(96, (12,), (0.26,))[0]
+RIBBON_BONE_Y = (18.3, 17.6, 16.9, 16.2)
+RIBBON_TAIL_Y = 15.5
 
 
 class AccessoryBuilder:
@@ -28,8 +30,8 @@ class AccessoryBuilder:
         for j, dx in enumerate((-0.02, 0.10)):
             pts = []
             for k, y in enumerate(RIBBON_BONE_Y + (RIBBON_TAIL_Y,)):
-                t = k / 3
-                pts.append(np.array([RIBBON_KNOT[0] + 0.10 + dx + 0.06 * t, y, RIBBON_KNOT[2] + 0.05 + 0.18 * j * t]))
+                t = k / 4
+                pts.append(np.array([RIBBON_KNOT[0] + 0.16 + dx + 0.12 * t, y, RIBBON_KNOT[2] + 0.05 + 0.22 * j * t]))
             names = []
             parent = "頭"
             for k in range(len(RIBBON_BONE_Y)):
@@ -67,12 +69,12 @@ class AccessoryBuilder:
             out = -out
         for sgn, ang in ((1, 0.35), (-1, -0.35)):
             pts = np.array([[0, 0], [0.12, 0.10], [0.30, 0.16], [0.42, 0.06], [0.38, -0.08], [0.20, -0.10],
-                            [0.06, -0.04]])
+                            [0.06, -0.04]]) * 1.3
             path = catmull_rom(pts, 28, closed=True)
             dirv = normalize(a * math.cos(ang) + up * math.sin(ang)) * sgn
             perp = normalize(np.cross(out, dirv)) * sgn
             P = k0[None] + path[:, :1] * dirv + path[:, 1:2] * perp + (0.06 * (path[:, 0] / 0.42) ** 2)[:, None] * out
-            parts.append(ribbon_tube(P, 0.14, 0.03, closed=True, up=out))
+            parts.append(ribbon_tube(P, 0.18, 0.035, closed=True, up=out))
         parts.append(sphere_part(k0 + out * 0.03, 0.08, 10, 8, squash=(0.8, 1.0, 1.0)))
         g = merge_parts(parts)
         g.W = w_single(g.n, nb, head)
@@ -80,7 +82,7 @@ class AccessoryBuilder:
         # tails (weighted to physics chains)
         for names, pts in self.ribbon_chains:
             path = catmull_rom(np.vstack([k0 + out * 0.02, pts]), 30)
-            w = np.linspace(0.13, 0.17, len(path))
+            w = np.linspace(0.16, 0.24, len(path))
             t = ribbon_tube(path, w, 0.025, up=out, vcut_end=0.10)
             keys = [(-(k0[1]), head), (-(pts[0][1] - 0.05), sk[names[0]])]
             for k in range(1, len(names)):

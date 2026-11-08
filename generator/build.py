@@ -203,6 +203,7 @@ def build(out_dir: str, verbose=True):
     hb.bangs()
     hb.side_locks()
     hb.back()
+    hb.ahoge()
     ab.build()
 
     # ---- morph presets ----

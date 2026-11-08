@@ -9,9 +9,9 @@ from PIL import Image, ImageDraw, ImageFilter
 
 SKIN = (255, 241, 234)
 SKIN_SHADOW = (242, 200, 190)
-HAIR = (244, 120, 88)
-HAIR_DARK = (214, 78, 58)
-HAIR_LIGHT = (255, 170, 140)
+HAIR = (246, 132, 104)
+HAIR_DARK = (221, 94, 74)
+HAIR_LIGHT = (255, 186, 160)
 
 
 def _hex(c):
@@ -193,26 +193,29 @@ def blush(d, name="blush.png", size=256):
 
 
 def hair(d, name="hair.png", w=256, h=512, seed=3):
+    """Soft anime hair clumps.  Two clumps across u (period 0.5): a strand's outer
+    face (u 0..0.5) shows one rounded clump with darker edges."""
     rng = np.random.default_rng(seed)
-    u = np.linspace(0, 1, w)
-    # strand streaks across u
-    noise = np.zeros(w)
-    for f, a in ((7, 0.5), (19, 0.3), (41, 0.2), (83, 0.12)):
-        noise += a * np.sin(2 * np.pi * (f * u + rng.random()))
-    noise = noise / np.abs(noise).max()
+    u = np.linspace(0, 1, w, endpoint=False)
+    f = (2 * u) % 1.0
+    clump = np.sin(np.pi * f) ** 0.7                      # 0 at the edges, 1 in the middle
+    fine = np.zeros(w)
+    for fr, a in ((6, 0.5), (14, 0.3), (26, 0.2)):
+        fine += a * np.sin(2 * np.pi * (fr * u + rng.random()))
+    fine /= np.abs(fine).max()
     v = np.linspace(0, 1, h)[:, None]
     base = np.array(HAIR, float)
     dark = np.array(HAIR_DARK, float)
     light = np.array(HAIR_LIGHT, float)
-    t = (0.5 + 0.5 * noise)[None, :]
+    t = (0.30 + 0.52 * clump + 0.18 * (0.5 + 0.5 * fine))[None, :]   # 0 dark .. 1 light
     col = np.zeros((h, w, 3))
     for k in range(3):
-        c = base[k] + (light[k] - base[k]) * np.clip(t - 0.55, 0, 1) * 1.0 \
-            - (base[k] - dark[k]) * np.clip(0.45 - t, 0, 1) * 0.9
-        # slightly darker roots, lighter tips
-        c = c * (0.93 + 0.07 * np.clip(v / 0.3, 0, 1)) + (light[k] - c) * 0.18 * np.clip((v - 0.6) / 0.4, 0, 1)
+        c = dark[k] + (base[k] - dark[k]) * np.clip(t / 0.6, 0, 1)
+        c = c + (light[k] - base[k]) * np.clip((t - 0.75) / 0.25, 0, 1) * 0.55
+        c = c * (0.94 + 0.06 * np.clip(v / 0.25, 0, 1))                       # darker roots
+        c = c + (light[k] - c) * 0.20 * np.clip((v - 0.65) / 0.35, 0, 1)      # lighter ends
         col[:, :, k] = c
-    img = Image.fromarray(col.clip(0, 255).astype(np.uint8), "RGB")
+    img = Image.fromarray(col.clip(0, 255).astype(np.uint8), "RGB").filter(ImageFilter.GaussianBlur(0.8))
     return _save(img, d, name)
 
 
@@ -284,7 +287,7 @@ def flower_center(d, name="flower_c.png", size=128):
 def build_all(d):
     names = {}
     names["toon_skin"] = toon(d, "toon_skin.png", (246, 206, 198), edge=0.50)
-    names["toon_hair"] = toon(d, "toon_hair.png", (226, 160, 160), edge=0.50)
+    names["toon_hair"] = toon(d, "toon_hair.png", (234, 158, 150), edge=0.50)
     names["toon_cloth"] = toon(d, "toon_cloth.png", (214, 210, 226), edge=0.50)
     names["toon_dark"] = toon(d, "toon_dark.png", (170, 166, 180), edge=0.52)
     names["toon_flat"] = toon(d, "toon_flat.png", (250, 248, 248), edge=0.5)
